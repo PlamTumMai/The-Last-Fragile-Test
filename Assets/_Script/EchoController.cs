@@ -2,62 +2,100 @@ using UnityEngine;
 
 public class EchoController : MonoBehaviour
 {
-    [Header("Movement")] public float moveSpeed = 5f;
-    public float jumpForce = 30f;
+    [Header("Movement")]
+    public float moveSpeed = 5f;
+    public float jumpForce = 12f;
     private Rigidbody2D rb;
     private float moveInput;
     private bool isGrounded;
 
-    [Header("Dash Mechanism")] public float dashSpeed = 20f;
+    [Header("Dash Mechanism")]
+    public float dashSpeed = 20f;
     public float dashDuration = 0.15f;
     private bool isDashing;
     private float dashTimeLeft;
 
     [Header("Fragility System")]
-    public int health = 4; // ระดับความคงทน 4 ขั้น (ปกติ - ร้าวเล็กน้อย - ร้าวหนัก - แตกสลาย)
-
+    public int health = 4;
     private Vector3 originalScale;
-    [Header("Effects")] public GameObject shatterEffectPrefab;
 
-    [Header("Fragility Stat Boosts")] public float speedBoostPerHit = 2.5f; // ทุกครั้งที่ร้าว จะเดินไวขึ้นเท่าไหร่
-    public float jumpBoostPerHit = 3.0f; // ทุกครั้งที่ร้าว จะโดดสูงขึ้นเท่าไหร่
+    [Header("Fragility Stat Boosts")]
+    public float speedBoostPerHit = 2.5f; 
+    public float jumpBoostPerHit = 3.0f;  
+
+    [Header("Damage Settings (I-Frames)")]
+    public float invincibilityDuration = 0.5f;
+    private float invincibilityTimer;          
+
+    [Header("Fall Damage Settings")]
+    public float fallSpeedThreshold = 18f; // ความเร็ว/แรงกระแทกขั้นต่ำที่จะทำให้เลือดลดเมื่อตกถึงพื้น
+
+    [Header("Effects")]
+    public GameObject shatterEffectPrefab;
+
+    [Header("Stamina System")]
+    public float maxStamina = 100f;
+    public float currentStamina;
+    public float jumpStaminaCost = 30f;
+    public float baseStaminaRegen = 25f;
+    private float currentStaminaRegen;
 
     void Start()
     {
         rb = GetComponent<Rigidbody2D>();
         originalScale = transform.localScale;
-        rb.gravityScale = 3f; // ทำให้ตกพื้นไวขึ้นแบบเกม Platformer
+        rb.gravityScale = 3f; 
+        
+        currentStamina = maxStamina;
+        currentStaminaRegen = baseStaminaRegen;
     }
 
     void Update()
     {
+        if (invincibilityTimer > 0)
+        {
+            invincibilityTimer -= Time.deltaTime;
+        }
+
         if (isDashing)
         {
             dashTimeLeft -= Time.deltaTime;
             if (dashTimeLeft <= 0)
             {
                 isDashing = false;
-                rb.gravityScale = 3f; // คืนค่าแรงโน้มถ่วง
+                rb.gravityScale = 3f; 
             }
-
-            return; // ระหว่างพุ่งตัว จะไม่รับคำสั่งเดิน
+            return; 
         }
 
-        // 1. การเดิน ซ้าย-ขวา
+        if (currentStamina < maxStamina)
+        {
+            currentStamina += currentStaminaRegen * Time.deltaTime;
+            if (currentStamina > maxStamina)
+            {
+                currentStamina = maxStamina;
+            }
+        }
+
         moveInput = Input.GetAxisRaw("Horizontal");
         rb.velocity = new Vector2(moveInput * moveSpeed, rb.velocity.y);
 
-        // 2. การกระโดด
-        if (Input.GetButtonDown("Jump") && isGrounded)
+        if (Input.GetButtonDown("Jump") && isGrounded && currentStamina >= jumpStaminaCost)
         {
             rb.velocity = new Vector2(rb.velocity.x, jumpForce);
             isGrounded = false;
+            
+            currentStamina -= jumpStaminaCost;
         }
 
-        // 3. การพุ่งตัว (Dash กลางอากาศหรือพื้น)
         if (Input.GetKeyDown(KeyCode.LeftShift) && !isDashing)
         {
             StartDash();
+        }
+
+        if (Input.GetKeyDown(KeyCode.H))
+        {
+            TakeDamage();
         }
     }
 
@@ -65,31 +103,34 @@ public class EchoController : MonoBehaviour
     {
         isDashing = true;
         dashTimeLeft = dashDuration;
-        rb.gravityScale = 0f; // ไม่ตกพื้นระหว่างพุ่งตัว
-        float dashDirection = moveInput != 0 ? Mathf.Sign(moveInput) : 1f; // พุ่งไปตามทิศที่กด หรือขวาถ้าอยู่นิ่ง
+        rb.gravityScale = 0f; 
+        float dashDirection = moveInput != 0 ? Mathf.Sign(moveInput) : 1f; 
         rb.velocity = new Vector2(dashDirection * dashSpeed, 0f);
     }
 
     public void TakeDamage()
     {
+        if (invincibilityTimer > 0) return; 
+
+        invincibilityTimer = invincibilityDuration;
+
         if (health > 1)
         {
             health--;
-            // ขนาดตัวเล็กลงตามขีดความคงทน
-            transform.localScale = originalScale * (health / 3f);
-
-            // ยิ่งแตก ยิ่งไว ยิ่งกระโดดสูง
+            transform.localScale = originalScale * (health / 4f);
+            
             moveSpeed += speedBoostPerHit;
-            jumpForce += jumpBoostPerHit;
+            jumpForce += jumpBoostPerHit; 
 
-            // เสกเอฟเฟกต์กระจกแตกที่ตำแหน่งเดียวกับตัวละคร
+            currentStaminaRegen = baseStaminaRegen * (health / 4f);
+
             if (shatterEffectPrefab != null)
             {
                 GameObject effect = Instantiate(shatterEffectPrefab, transform.position, Quaternion.identity);
-                Destroy(effect, 0.5f);
+                Destroy(effect, 1f);
             }
 
-            Debug.Log("ร่างร้าว! เลือด: " + health + " | ความเร็ว: " + moveSpeed + " | แรงกระโดด: " + jumpForce);
+            Debug.Log("ร่างร้าว! เลือด: " + health);
         }
         else
         {
@@ -100,13 +141,20 @@ public class EchoController : MonoBehaviour
 
     private void OnCollisionEnter2D(Collision2D collision)
     {
-        // เพิ่ม CompareTag("Obstacle") เข้าไป เพื่อให้ระบบนับว่าเหยียบอุปสรรคก็ถือว่าแตะพื้น (isGrounded = true)
+        // 1. เช็คเมื่อร่างกายสัมผัสพื้นหรืออุปสรรคเพื่อรีเซ็ตการกระโดด
         if (collision.gameObject.CompareTag("Ground") || collision.gameObject.CompareTag("Obstacle"))
         {
             isGrounded = true;
+
+            // เช็คแรงกระแทกตอนตกถึงพื้น หากตกแรงกว่าค่า Threshold จะได้รับดาเมจ
+            if (collision.relativeVelocity.magnitude >= fallSpeedThreshold)
+            {
+                Debug.Log("ร่วงกระแทกพื้นแรงเกินไป! แรงกระแทก: " + collision.relativeVelocity.magnitude);
+                TakeDamage();
+            }
         }
 
-        // ส่วนนี้คือระบบรับดาเมจเมื่อชนอุปสรรคแรงๆ หรือ Dash ชน (เหมือนเดิม)
+        // 2. เช็คเมื่อพุ่งชนหรือชนอุปสรรคแรงๆ (เหมือนเดิม)
         if (collision.gameObject.CompareTag("Obstacle"))
         {
             if (collision.relativeVelocity.magnitude > 10f || isDashing)
