@@ -817,7 +817,7 @@ MonoBehaviour:
   speedBoostPerHit: 2.5
   jumpBoostPerHit: 2.5
   invincibilityDuration: 0.5
-  fallSpeedThreshold: 18
+  fallSpeedThreshold: 25
   shatterEffectPrefab: {fileID: 9115617199129920114, guid: e2e1e63610bbebd4bb0c47e6ea385803, type: 3}
   maxStamina: 100
   currentStamina: 0
