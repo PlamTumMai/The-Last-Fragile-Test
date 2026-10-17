@@ -127,7 +127,7 @@ public class EchoController : MonoBehaviour
             if (shatterEffectPrefab != null)
             {
                 GameObject effect = Instantiate(shatterEffectPrefab, transform.position, Quaternion.identity);
-                Destroy(effect, 1f);
+                Destroy(effect, 0.5f);
             }
 
             Debug.Log("ร่างร้าว! เลือด: " + health);
