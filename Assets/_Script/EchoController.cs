@@ -78,11 +78,11 @@ public class EchoController : MonoBehaviour
         }
 
         moveInput = Input.GetAxisRaw("Horizontal");
-        rb.velocity = new Vector2(moveInput * moveSpeed, rb.velocity.y);
+        rb.linearVelocity = new Vector2(moveInput * moveSpeed, rb.linearVelocity.y);
 
         if (Input.GetButtonDown("Jump") && isGrounded && currentStamina >= jumpStaminaCost)
         {
-            rb.velocity = new Vector2(rb.velocity.x, jumpForce);
+            rb.linearVelocity = new Vector2(rb.linearVelocity.x, jumpForce);
             isGrounded = false;
             
             currentStamina -= jumpStaminaCost;
@@ -105,7 +105,7 @@ public class EchoController : MonoBehaviour
         dashTimeLeft = dashDuration;
         rb.gravityScale = 0f; 
         float dashDirection = moveInput != 0 ? Mathf.Sign(moveInput) : 1f; 
-        rb.velocity = new Vector2(dashDirection * dashSpeed, 0f);
+        rb.linearVelocity = new Vector2(dashDirection * dashSpeed, 0f);
     }
 
     public void TakeDamage()
