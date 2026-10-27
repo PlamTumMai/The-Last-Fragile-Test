@@ -1,23 +1,44 @@
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 public class LevelKey : MonoBehaviour
 {
-    public int keyNumber = 1; // กำหนดใน Inspector ว่านี่คือกุญแจดอกที่ 1, 2 หรือ 3
+    public int keyNumber = 1;
+
+    private bool isCollected = false;
 
     private void OnTriggerEnter2D(Collider2D collision)
     {
-        if (collision.gameObject.CompareTag("Player"))
-        {
-            // บันทึกกุญแจลง GameManager
-            if (keyNumber == 1) GameManager.instance.hasKey1 = true;
-            if (keyNumber == 2) GameManager.instance.hasKey2 = true;
-            if (keyNumber == 3) GameManager.instance.hasKey3 = true;
+        if (!collision.CompareTag("Player") || isCollected)
+            return;
 
-            Debug.Log("เก็บกุญแจด่าน " + keyNumber + " สำเร็จ! วาร์ปกลับ Lobby");
-            
-            // เก็บเสร็จวาร์ปกลับ Lobby ทันที (พร้อมกับรีเซ็ตเลือดในด่าน Lobby ให้เต็มอัตโนมัติ)
-            SceneManager.LoadScene("Lobby");
+        if (GameManager.instance == null)
+        {
+            Debug.LogWarning("ไม่พบ GameManager!");
+            return;
         }
+
+        switch (keyNumber)
+        {
+            case 1:
+                GameManager.instance.hasKey1 = true;
+                break;
+
+            case 2:
+                GameManager.instance.hasKey2 = true;
+                break;
+
+            case 3:
+                GameManager.instance.hasKey3 = true;
+                break;
+
+            default:
+                Debug.LogWarning("หมายเลขกุญแจต้องเป็น 1, 2 หรือ 3");
+                return;
+        }
+
+        isCollected = true;
+        Debug.Log("เก็บกุญแจด่าน " + keyNumber + " สำเร็จ!");
+
+        Destroy(gameObject);
     }
 }

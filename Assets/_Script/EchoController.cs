@@ -1,4 +1,3 @@
-
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -36,17 +35,33 @@ public class EchoController : MonoBehaviour
     private bool isDashing;
     private float dashTimeLeft;
 
+    [Header("Ice Floor Settings")]
+    public float iceAcceleration = 8f;
+    public float iceDeceleration = 2f;
+
+    private bool isOnIce;
+
     [Header("Fragility System")]
     public int health = 4;
+    public int maxHealth = 4;
+
     private Vector3 originalScale;
 
     [Header("Fragility Stat Boosts")]
     public float speedBoostPerHit = 2.5f;
-    public float jumpBoostPerHit = 3.0f;
+    public float jumpBoostPerHit = 3f;
 
     [Header("Damage Settings (I-Frames)")]
     public float invincibilityDuration = 0.5f;
     private float invincibilityTimer;
+
+    [Header("Damage Sound")]
+    public AudioClip damageSound;
+
+    [Range(0f, 1f)]
+    public float damageVolume = 1f;
+
+    private AudioSource audioSource;
 
     [Header("Fall Damage Settings")]
     public float fallSpeedThreshold = 18f;
@@ -65,36 +80,59 @@ public class EchoController : MonoBehaviour
     [Header("Stamina UI")]
     public Slider staminaSlider;
 
-    void Start()
+    [Header("Game Over UI")]
+    public GameObject gameOverText;
+
+    private void Start()
     {
+        if (gameOverText != null)
+        {
+            gameOverText.SetActive(false);
+        }
+
         rb = GetComponent<Rigidbody2D>();
 
         spriteRenderer = GetComponentInChildren<SpriteRenderer>();
         animator = GetComponentInChildren<Animator>();
 
         originalScale = transform.localScale;
+
         rb.gravityScale = 3f;
+
+        maxHealth = Mathf.Max(1, maxHealth);
+        health = Mathf.Clamp(health, 1, maxHealth);
 
         currentStamina = maxStamina;
         currentStaminaRegen = baseStaminaRegen;
 
-        // ตั้งค่าหลอด Stamina
+        audioSource = GetComponent<AudioSource>();
+
+        if (audioSource == null)
+        {
+            audioSource = gameObject.AddComponent<AudioSource>();
+        }
+
+        audioSource.playOnAwake = false;
+        audioSource.spatialBlend = 0f;
+
         if (staminaSlider != null)
         {
             staminaSlider.minValue = 0f;
             staminaSlider.maxValue = maxStamina;
             staminaSlider.value = currentStamina;
         }
+
+        UpdateCharacterScale();
     }
 
-    void Update()
+    private void Update()
     {
-        if (invincibilityTimer > 0)
+        if (invincibilityTimer > 0f)
         {
             invincibilityTimer -= Time.deltaTime;
         }
 
-        if (wallJumpTimer > 0)
+        if (wallJumpTimer > 0f)
         {
             wallJumpTimer -= Time.deltaTime;
         }
@@ -103,7 +141,7 @@ public class EchoController : MonoBehaviour
         {
             dashTimeLeft -= Time.deltaTime;
 
-            if (dashTimeLeft <= 0)
+            if (dashTimeLeft <= 0f)
             {
                 isDashing = false;
                 rb.gravityScale = 3f;
@@ -118,11 +156,7 @@ public class EchoController : MonoBehaviour
         if (currentStamina < maxStamina)
         {
             currentStamina += currentStaminaRegen * Time.deltaTime;
-
-            if (currentStamina > maxStamina)
-            {
-                currentStamina = maxStamina;
-            }
+            currentStamina = Mathf.Min(currentStamina, maxStamina);
         }
 
         // รับค่าการเดิน
@@ -131,21 +165,43 @@ public class EchoController : MonoBehaviour
         // หันหน้าตามทิศทางการเดิน
         if (spriteRenderer != null)
         {
-            if (moveInput > 0)
+            if (moveInput > 0f)
             {
                 spriteRenderer.flipX = true;
             }
-            else if (moveInput < 0)
+            else if (moveInput < 0f)
             {
                 spriteRenderer.flipX = false;
             }
         }
 
-        // เคลื่อนที่ซ้าย-ขวา
-        rb.linearVelocity = new Vector2(
-            moveInput * moveSpeed,
-            rb.linearVelocity.y
-        );
+        // ระบบเคลื่อนที่: พื้นปกติกับพื้นน้ำแข็ง
+        if (isOnIce)
+        {
+            float targetSpeed = moveInput * moveSpeed;
+
+            float acceleration = moveInput != 0f
+                ? iceAcceleration
+                : iceDeceleration;
+
+            float newSpeed = Mathf.MoveTowards(
+                rb.linearVelocity.x,
+                targetSpeed,
+                acceleration * Time.deltaTime
+            );
+
+            rb.linearVelocity = new Vector2(
+                newSpeed,
+                rb.linearVelocity.y
+            );
+        }
+        else
+        {
+            rb.linearVelocity = new Vector2(
+                moveInput * moveSpeed,
+                rb.linearVelocity.y
+            );
+        }
 
         // กระโดดจากพื้นหรือกำแพง
         if (Input.GetButtonDown("Jump") &&
@@ -153,7 +209,6 @@ public class EchoController : MonoBehaviour
         {
             if (isGrounded)
             {
-                // กระโดดจากพื้น
                 rb.linearVelocity = new Vector2(
                     rb.linearVelocity.x,
                     jumpForce
@@ -164,7 +219,6 @@ public class EchoController : MonoBehaviour
             }
             else if (isWallClinging && enableWallCling)
             {
-                // กระโดดออกจากกำแพง
                 rb.linearVelocity = new Vector2(
                     wallDirection * wallJumpForceX,
                     wallJumpForceY
@@ -179,8 +233,8 @@ public class EchoController : MonoBehaviour
             }
         }
 
-        // Dash
-        if (Input.GetKeyDown(KeyCode.LeftShift) && !isDashing)
+        // Dash ด้วย Left Shift
+        if (Input.GetKeyDown(KeyCode.LeftShift))
         {
             StartDash();
         }
@@ -191,25 +245,56 @@ public class EchoController : MonoBehaviour
             TakeDamage();
         }
 
-        // อัปเดต Animation และหลอด Stamina
         UpdateAnimation();
         UpdateStaminaUI();
     }
 
-    void UpdateStaminaUI()
+    private void FixedUpdate()
     {
-        if (staminaSlider == null)
+        if (!enableWallCling || isDashing)
         {
+            isWallClinging = false;
+            isTouchingWall = false;
             return;
         }
 
-        staminaSlider.maxValue = maxStamina;
-        staminaSlider.value = currentStamina;
+        isWallClinging =
+            isTouchingWall &&
+            !isGrounded &&
+            wallJumpTimer <= 0f;
+
+        if (isWallClinging && rb.linearVelocity.y < 0f)
+        {
+            rb.linearVelocity = new Vector2(
+                rb.linearVelocity.x,
+                0f
+            );
+        }
+
+        isTouchingWall = false;
     }
 
-    void UpdateAnimation()
+    private void StartDash()
     {
-        if (animator == null)
+        isDashing = true;
+        isWallClinging = false;
+        dashTimeLeft = dashDuration;
+
+        rb.gravityScale = 0f;
+
+        float dashDirection = moveInput != 0f
+            ? Mathf.Sign(moveInput)
+            : (spriteRenderer != null && spriteRenderer.flipX ? 1f : -1f);
+
+        rb.linearVelocity = new Vector2(
+            dashDirection * dashSpeed,
+            0f
+        );
+    }
+
+    private void UpdateAnimation()
+    {
+        if (animator == null || rb == null)
         {
             return;
         }
@@ -226,7 +311,7 @@ public class EchoController : MonoBehaviour
 
         animator.SetBool(
             "IsRunning",
-            moveInput != 0 && isGrounded && !isDashing
+            moveInput != 0f && isGrounded && !isDashing
         );
 
         animator.SetBool("IsJumping", isJumping);
@@ -235,74 +320,45 @@ public class EchoController : MonoBehaviour
         animator.SetBool("IsDashing", isDashing);
     }
 
-    void FixedUpdate()
+    private void UpdateStaminaUI()
     {
-        if (!enableWallCling || isDashing)
-        {
-            isWallClinging = false;
-            isTouchingWall = false;
-            return;
-        }
-
-        // เกาะกำแพงเมื่อสัมผัสด้านข้าง
-        // ไม่ได้อยู่บนพื้น และพ้นช่วงล็อกหลัง Wall Jump
-        isWallClinging =
-            isTouchingWall &&
-            !isGrounded &&
-            wallJumpTimer <= 0;
-
-        if (isWallClinging && rb.linearVelocity.y < 0f)
-        {
-            // หยุดการตกลงด้านล่าง
-            rb.linearVelocity = new Vector2(
-                rb.linearVelocity.x,
-                0f
-            );
-        }
-
-        // รีเซ็ตเพื่อรอการตรวจจับรอบถัดไป
-        isTouchingWall = false;
-    }
-
-    void StartDash()
-    {
-        isDashing = true;
-        isWallClinging = false;
-        dashTimeLeft = dashDuration;
-
-        rb.gravityScale = 0f;
-
-        float dashDirection = moveInput != 0
-            ? Mathf.Sign(moveInput)
-            : 1f;
-
-        rb.linearVelocity = new Vector2(
-            dashDirection * dashSpeed,
-            0f
-        );
-    }
-
-    public void TakeDamage()
-    {
-        if (invincibilityTimer > 0)
+        if (staminaSlider == null)
         {
             return;
         }
+
+        staminaSlider.maxValue = maxStamina;
+        staminaSlider.value = currentStamina;
+    }
+
+    // =========================
+    // DAMAGE SYSTEM
+    // =========================
+
+
+    public void TakeDamage(int damageAmount = 1)
+    {
+        if (invincibilityTimer > 0f)
+            return;
 
         invincibilityTimer = invincibilityDuration;
 
-        if (health > 1)
+        if (damageSound != null && audioSource != null)
         {
-            health--;
+            audioSource.PlayOneShot(damageSound, damageVolume);
+        }
 
-            transform.localScale =
-                originalScale * (health / 4f);
+        if (health > damageAmount)
+        {
+            health -= damageAmount;
+
+            UpdateCharacterScale();
 
             moveSpeed += speedBoostPerHit;
             jumpForce += jumpBoostPerHit;
 
             currentStaminaRegen =
-                baseStaminaRegen * (health / 4f);
+                baseStaminaRegen * ((float)health / maxHealth);
 
             if (shatterEffectPrefab != null)
             {
@@ -315,14 +371,72 @@ public class EchoController : MonoBehaviour
                 Destroy(effect, 0.5f);
             }
 
-            Debug.Log("ร่างร้าว! เลือด: " + health);
+            Debug.Log("ได้รับดาเมจ! HP: " + health);
         }
         else
         {
+            health = 0;
+
             Debug.Log("ตัวละครแตกสลาย! Game Over");
+
+            // แสดงข้อความ GAME OVER
+            if (gameOverText != null)
+            {
+                gameOverText.SetActive(true);
+            }
+
+            // ปิดการควบคุมตัวละคร
             gameObject.SetActive(false);
         }
     }
+
+
+    // =========================
+    // HEAL SYSTEM
+    // =========================
+
+    public void HealHealth(int healAmount)
+    {
+        if (health >= maxHealth || healAmount <= 0)
+        {
+            return;
+        }
+
+        int previousHealth = health;
+
+        health = Mathf.Clamp(
+            health + healAmount,
+            0,
+            maxHealth
+        );
+
+        if (health > previousHealth)
+        {
+            UpdateCharacterScale();
+
+            Debug.Log("ฟื้นฟู HP สำเร็จ! HP: " + health);
+        }
+    }
+
+    public Vector3 GetOriginalScale()
+    {
+        return originalScale;
+    }
+
+    private void UpdateCharacterScale()
+    {
+        if (maxHealth <= 0)
+        {
+            return;
+        }
+
+        float scaleMultiplier = (float)health / maxHealth;
+        transform.localScale = originalScale * scaleMultiplier;
+    }
+
+    // =========================
+    // COLLISION SYSTEM
+    // =========================
 
     private void OnCollisionEnter2D(Collision2D collision)
     {
@@ -336,9 +450,12 @@ public class EchoController : MonoBehaviour
 
     private void CheckCollision(Collision2D collision)
     {
+        bool isIce = collision.gameObject.CompareTag("Ice");
+
         bool isValidSurface =
             collision.gameObject.CompareTag("Ground") ||
-            collision.gameObject.CompareTag("Obstacle");
+            collision.gameObject.CompareTag("Obstacle") ||
+            isIce;
 
         if (!isValidSurface)
         {
@@ -347,24 +464,22 @@ public class EchoController : MonoBehaviour
 
         foreach (ContactPoint2D contact in collision.contacts)
         {
-            // ตรวจจับพื้นจาก Normal ที่ชี้ขึ้น
+            // ตรวจจับพื้นจากด้านล่างของตัวละคร
             if (contact.normal.y > 0.5f)
             {
                 isGrounded = true;
+                isOnIce = isIce;
             }
 
-            // ตรวจจับกำแพงจาก Normal ด้านข้าง
+            // ตรวจจับกำแพง
             if (Mathf.Abs(contact.normal.x) > 0.5f)
             {
                 isTouchingWall = true;
-
-                // กำหนดทิศทางกระโดดออกจากกำแพง
-                wallDirection =
-                    contact.normal.x > 0 ? 1 : -1;
+                wallDirection = contact.normal.x > 0f ? 1 : -1;
             }
         }
 
-        // ตรวจสอบแรงกระแทก
+        // ตรวจสอบแรงกระแทกจากการตก
         if (collision.relativeVelocity.magnitude >= fallSpeedThreshold)
         {
             Debug.Log(
@@ -378,8 +493,7 @@ public class EchoController : MonoBehaviour
         // ตรวจสอบการชนสิ่งกีดขวางระหว่าง Dash
         if (collision.gameObject.CompareTag("Obstacle"))
         {
-            if (collision.relativeVelocity.magnitude > 10f ||
-                isDashing)
+            if (collision.relativeVelocity.magnitude > 10f || isDashing)
             {
                 TakeDamage();
             }
@@ -388,8 +502,14 @@ public class EchoController : MonoBehaviour
 
     private void OnCollisionExit2D(Collision2D collision)
     {
+        if (collision.gameObject.CompareTag("Ice"))
+        {
+            isOnIce = false;
+        }
+
         if (!collision.gameObject.CompareTag("Ground") &&
-            !collision.gameObject.CompareTag("Obstacle"))
+            !collision.gameObject.CompareTag("Obstacle") &&
+            !collision.gameObject.CompareTag("Ice"))
         {
             return;
         }
