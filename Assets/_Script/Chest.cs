@@ -24,12 +24,17 @@ public class Chest : MonoBehaviour
     [Header("Thank You Text")]
     public TextMeshProUGUI thankYouText;
 
+    [Header("Not Enough Keys Message")]
+    public TextMeshProUGUI notEnoughKeysText;
+    public float messageDuration = 2f;
+
     [Header("Return To Main Menu")]
     public string mainMenuSceneName = "MainMenu";
     public float returnDelay = 5f;
 
     private bool isOpened = false;
     private AudioSource audioSource;
+    private Coroutine messageCoroutine;
 
     private void Awake()
     {
@@ -45,6 +50,11 @@ public class Chest : MonoBehaviour
         if (thankYouText != null)
         {
             thankYouText.gameObject.SetActive(false);
+        }
+
+        if (notEnoughKeysText != null)
+        {
+            notEnoughKeysText.gameObject.SetActive(false);
         }
     }
 
@@ -98,8 +108,34 @@ public class Chest : MonoBehaviour
         }
         else
         {
-            Debug.Log("กุญแจยังไม่ครบนะ ขาดอีกนิด!");
+            Debug.Log("กุญแจยังไม่ครบ 3 ดอก!");
+
+            // แสดงข้อความแจ้งเตือน
+            if (messageCoroutine != null)
+            {
+                StopCoroutine(messageCoroutine);
+            }
+
+            messageCoroutine = StartCoroutine(
+                ShowNotEnoughKeysMessage()
+            );
         }
+    }
+
+    private IEnumerator ShowNotEnoughKeysMessage()
+    {
+        if (notEnoughKeysText == null)
+            yield break;
+
+        notEnoughKeysText.text =
+            "Need 3 Key to open!";
+
+        notEnoughKeysText.gameObject.SetActive(true);
+
+        yield return new WaitForSeconds(messageDuration);
+
+        notEnoughKeysText.gameObject.SetActive(false);
+        messageCoroutine = null;
     }
 
     private IEnumerator FloatPlayer(Rigidbody2D playerRb)
