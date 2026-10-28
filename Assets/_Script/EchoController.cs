@@ -69,16 +69,7 @@ public class EchoController : MonoBehaviour
     [Header("Effects")]
     public GameObject shatterEffectPrefab;
 
-    [Header("Stamina System")]
-    public float maxStamina = 100f;
-    public float currentStamina;
-    public float jumpStaminaCost = 30f;
-    public float baseStaminaRegen = 25f;
-
     private float currentStaminaRegen;
-
-    [Header("Stamina UI")]
-    public Slider staminaSlider;
 
     [Header("Game Over UI")]
     public GameObject gameOverText;
@@ -102,8 +93,6 @@ public class EchoController : MonoBehaviour
         maxHealth = Mathf.Max(1, maxHealth);
         health = Mathf.Clamp(health, 1, maxHealth);
 
-        currentStamina = maxStamina;
-        currentStaminaRegen = baseStaminaRegen;
 
         audioSource = GetComponent<AudioSource>();
 
@@ -115,12 +104,6 @@ public class EchoController : MonoBehaviour
         audioSource.playOnAwake = false;
         audioSource.spatialBlend = 0f;
 
-        if (staminaSlider != null)
-        {
-            staminaSlider.minValue = 0f;
-            staminaSlider.maxValue = maxStamina;
-            staminaSlider.value = currentStamina;
-        }
 
         UpdateCharacterScale();
     }
@@ -148,15 +131,7 @@ public class EchoController : MonoBehaviour
             }
 
             UpdateAnimation();
-            UpdateStaminaUI();
             return;
-        }
-
-        // ฟื้นฟู Stamina
-        if (currentStamina < maxStamina)
-        {
-            currentStamina += currentStaminaRegen * Time.deltaTime;
-            currentStamina = Mathf.Min(currentStamina, maxStamina);
         }
 
         // รับค่าการเดิน
@@ -204,8 +179,7 @@ public class EchoController : MonoBehaviour
         }
 
         // กระโดดจากพื้นหรือกำแพง
-        if (Input.GetButtonDown("Jump") &&
-            currentStamina >= jumpStaminaCost)
+        if (Input.GetButtonDown("Jump"))
         {
             if (isGrounded)
             {
@@ -215,7 +189,6 @@ public class EchoController : MonoBehaviour
                 );
 
                 isGrounded = false;
-                currentStamina -= jumpStaminaCost;
             }
             else if (isWallClinging && enableWallCling)
             {
@@ -229,7 +202,6 @@ public class EchoController : MonoBehaviour
                 isGrounded = false;
 
                 wallJumpTimer = wallJumpLockTime;
-                currentStamina -= jumpStaminaCost;
             }
         }
 
@@ -246,7 +218,6 @@ public class EchoController : MonoBehaviour
         }
 
         UpdateAnimation();
-        UpdateStaminaUI();
     }
 
     private void FixedUpdate()
@@ -320,16 +291,6 @@ public class EchoController : MonoBehaviour
         animator.SetBool("IsDashing", isDashing);
     }
 
-    private void UpdateStaminaUI()
-    {
-        if (staminaSlider == null)
-        {
-            return;
-        }
-
-        staminaSlider.maxValue = maxStamina;
-        staminaSlider.value = currentStamina;
-    }
 
     // =========================
     // DAMAGE SYSTEM
@@ -356,9 +317,6 @@ public class EchoController : MonoBehaviour
 
             moveSpeed += speedBoostPerHit;
             jumpForce += jumpBoostPerHit;
-
-            currentStaminaRegen =
-                baseStaminaRegen * ((float)health / maxHealth);
 
             if (shatterEffectPrefab != null)
             {
